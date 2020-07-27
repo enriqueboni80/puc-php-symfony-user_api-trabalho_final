@@ -5,7 +5,6 @@ namespace App\MessageHandler;
 use App\Entity\User;
 use App\Message\ListUserMessage;
 use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Messenger\Handler\MessageHandlerInterface;
 
 

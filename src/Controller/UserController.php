@@ -2,34 +2,29 @@
 
 namespace App\Controller;
 
-use App\Entity\Telephone;
 use App\Entity\User;
-use App\Message\CreateUserMessage;
-use App\Message\RemoveUserMessage;
-use App\Message\DetailUserMessage;
-use App\Message\ListUserMessage;
-use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\JsonResponse;
+use App\Entity\Telephone;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Annotation\Route;
-use Symfony\Component\Validator\ConstraintViolationInterface;
-use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+
+use App\Message\ListUserMessage;
+use App\Message\CreateUserMessage;
+use App\Message\RemoveUserMessage;
+use App\Message\UpdateUserMessage;
+use App\Message\DetailUserMessage;
+
 
 class UserController extends AbstractController
 {
     private MessageBusInterface $bus;
 
-    private ValidatorInterface $validator;
-    private EntityManagerInterface $manager;
-
-    public function __construct(EntityManagerInterface $manager, ValidatorInterface $validator, \Symfony\Component\Messenger\MessageBusInterface $bus)
+    public function __construct(\Symfony\Component\Messenger\MessageBusInterface $bus)
     {
-        $this->manager = $manager;
-        $this->validator = $validator;
         $this->bus = $bus;
     }
 
@@ -38,15 +33,17 @@ class UserController extends AbstractController
      */
     public function listAction(): Response
     {
-        $handlerResult = $this->bus->dispatch(new ListUserMessage());
-        $users = $handlerResult->last(HandledStamp::class)->getResult();
-
-        $data = [];
-        foreach ($users as $user) {
-            $data[] = $this->userToArray($user);
+        try {
+            $handlerResult = $this->bus->dispatch(new ListUserMessage());
+            $users = $handlerResult->last(HandledStamp::class)->getResult();
+            $data = [];
+            foreach ($users as $user) {
+                $data[] = $this->userToArray($user);
+            }
+            return new JsonResponse($data, Response::HTTP_OK);
+        } catch (\Throwable $th) {
+            return new JsonResponse($th, Response::HTTP_BAD_REQUEST);
         }
-
-        return new JsonResponse($data);
     }
 
     /**
@@ -54,9 +51,13 @@ class UserController extends AbstractController
      */
     public function detailAction(int $id): Response
     {
-        $handlerResult = $this->bus->dispatch(new DetailUserMessage($id));
-        $user = $handlerResult->last(HandledStamp::class)->getResult();
-        return new JsonResponse($this->userToArray($user));
+        try {
+            $handlerResult = $this->bus->dispatch(new DetailUserMessage($id));
+            $user = $handlerResult->last(HandledStamp::class)->getResult();
+            return new JsonResponse($this->userToArray($user));
+        } catch (\Throwable $th) {
+            return new JsonResponse($th, Response::HTTP_BAD_REQUEST);
+        }
     }
 
     /**
@@ -64,11 +65,15 @@ class UserController extends AbstractController
      */
     public function createAction(Request $request): Response
     {
-        $handlerResult = $this->bus->dispatch(new CreateUserMessage($request));
-        $user = $handlerResult->last(HandledStamp::class)->getResult();
-        return new Response('', Response::HTTP_CREATED, [
-            'Location' => '/users/' . $user->getId()
-        ]);
+        try {
+            $handlerResult = $this->bus->dispatch(new CreateUserMessage($request));
+            $user = $handlerResult->last(HandledStamp::class)->getResult();
+            return new Response('', Response::HTTP_CREATED, [
+                'Location' => '/users/' . $user->getId()
+            ]);
+        } catch (\Throwable $th) {
+            return new JsonResponse($th, Response::HTTP_BAD_REQUEST);
+        }
     }
 
     /**
@@ -76,32 +81,13 @@ class UserController extends AbstractController
      */
     public function updateAction(Request $request, int $id): Response
     {
-        $requestContent = $request->getContent();
-        $json = json_decode($requestContent, true);
-
-        $user = $this->manager->getRepository(User::class)->find($id);
-
-        if (null === $user) {
-            throw $this->createNotFoundException('User with ID #' . $id . ' not found');
+        try {
+            $handlerResult = $this->bus->dispatch(new UpdateUserMessage($request, $id));
+            $user = $handlerResult->last(HandledStamp::class)->getResult();
+            return new Response('', Response::HTTP_OK);
+        } catch (\Throwable $th) {
+            return new JsonResponse($th, Response::HTTP_BAD_REQUEST);
         }
-
-        $user->setName($json['name']);
-        $user->setEmail($json['email']);
-
-        $errors = $this->validator->validate($user);
-
-        if (count($errors) > 0) {
-            $violations = array_map(fn (ConstraintViolationInterface $violation) => [
-                'property' => $violation->getPropertyPath(),
-                'message' => $violation->getMessage()
-            ], iterator_to_array($errors));
-            return new JsonResponse($violations, Response::HTTP_BAD_REQUEST);
-        }
-
-        $this->manager->persist($user);
-        $this->manager->flush();
-
-        return new Response('', Response::HTTP_OK);
     }
 
     /**
@@ -109,8 +95,12 @@ class UserController extends AbstractController
      */
     public function removeAction(int $id): Response
     {
-        $this->bus->dispatch(new RemoveUserMessage($id));
-        return new Response('', Response::HTTP_OK);
+        try {
+            $this->bus->dispatch(new RemoveUserMessage($id));
+            return new Response('', Response::HTTP_OK);
+        } catch (\Throwable $th) {
+            return new JsonResponse($th, Response::HTTP_BAD_REQUEST);
+        }
     }
 
     private function userToArray(User $user): array

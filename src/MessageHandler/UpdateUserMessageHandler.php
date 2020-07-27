@@ -3,7 +3,7 @@
 namespace App\MessageHandler;
 
 use App\Entity\User;
-use App\Message\CreateUserMessage;
+use App\Message\UpdateUserMessage;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -12,7 +12,7 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Symfony\Component\Messenger\Handler\MessageHandlerInterface;
 
 
-final class CreateUserMessageHandler implements MessageHandlerInterface
+final class UpdateUserMessageHandler implements MessageHandlerInterface
 {
 
     private EntityManagerInterface $manager;
@@ -24,16 +24,20 @@ final class CreateUserMessageHandler implements MessageHandlerInterface
         $this->validator = $validator;
     }
 
-    public function __invoke(CreateUserMessage $message)
+    public function __invoke(UpdateUserMessage $message)
     {
         $requestContent = $message->getRequest()->getContent();
         $json = json_decode($requestContent, true);
-        $json['telephones'] = [['number'=>'11111111'],['number'=>'111111111']];
+        
 
-        $user = new User($json['name'], $json['email']);
-        foreach ($json['telephones'] as $telephone) {
-            $user->addTelephone($telephone['number']);
+        $user = $this->manager->getRepository(User::class)->find($message->getUserId());
+
+        if (null === $user) {
+            throw new \InvalidArgumentException('User with ID #' . $message->getUserId() . ' not found');
         }
+
+        $user->setName($json['name']);
+        $user->setEmail($json['email']);
 
         $errors = $this->validator->validate($user);
 
