@@ -4,7 +4,10 @@ namespace App\Controller;
 
 use App\Entity\Telephone;
 use App\Entity\User;
+use App\Message\CreateUserMessage;
 use App\Message\RemoveUserMessage;
+use App\Message\DetailUserMessage;
+use App\Message\ListUserMessage;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -14,6 +17,7 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Validator\ConstraintViolationInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
 
 class UserController extends AbstractController
 {
@@ -34,7 +38,8 @@ class UserController extends AbstractController
      */
     public function listAction(): Response
     {
-        $users = $this->manager->getRepository(User::class)->findAll();
+        $handlerResult = $this->bus->dispatch(new ListUserMessage());
+        $users = $handlerResult->last(HandledStamp::class)->getResult();
 
         $data = [];
         foreach ($users as $user) {
@@ -49,12 +54,8 @@ class UserController extends AbstractController
      */
     public function detailAction(int $id): Response
     {
-        $user = $this->manager->getRepository(User::class)->find($id);
-
-        if (null === $user) {
-            throw $this->createNotFoundException('User with ID #' . $id . ' not found');
-        }
-
+        $handlerResult = $this->bus->dispatch(new DetailUserMessage($id));
+        $user = $handlerResult->last(HandledStamp::class)->getResult();
         return new JsonResponse($this->userToArray($user));
     }
 
@@ -63,29 +64,8 @@ class UserController extends AbstractController
      */
     public function createAction(Request $request): Response
     {
-        $requestContent = $request->getContent();
-        $json = json_decode($requestContent, true);
-
-        $user = new User($json['name'], $json['email']);
-        foreach ($json['telephones'] as $telephone) {
-            $user->addTelephone($telephone['number']);
-        }
-
-        $errors = $this->validator->validate($user);
-
-        if (count($errors) > 0) {
-            $violations = array_map(fn(ConstraintViolationInterface $violation) => [
-                'property' => $violation->getPropertyPath(),
-                'message' => $violation->getMessage()
-            ], iterator_to_array($errors));
-            return new JsonResponse($violations, Response::HTTP_BAD_REQUEST);
-        }
-
-        $this->manager->persist($user);
-        $this->manager->flush();
-
-        // enviar email aqui????
-
+        $handlerResult = $this->bus->dispatch(new CreateUserMessage($request));
+        $user = $handlerResult->last(HandledStamp::class)->getResult();
         return new Response('', Response::HTTP_CREATED, [
             'Location' => '/users/' . $user->getId()
         ]);
@@ -111,7 +91,7 @@ class UserController extends AbstractController
         $errors = $this->validator->validate($user);
 
         if (count($errors) > 0) {
-            $violations = array_map(fn(ConstraintViolationInterface $violation) => [
+            $violations = array_map(fn (ConstraintViolationInterface $violation) => [
                 'property' => $violation->getPropertyPath(),
                 'message' => $violation->getMessage()
             ], iterator_to_array($errors));
@@ -139,7 +119,7 @@ class UserController extends AbstractController
             'id' => $user->getId(),
             'name' => $user->getName(),
             'email' => $user->getEmail(),
-            'telephones' => array_map(fn(Telephone $telephone) => [
+            'telephones' => array_map(fn (Telephone $telephone) => [
                 'number' => $telephone->getNumber()
             ], $user->getTelephones()->toArray())
         ];
