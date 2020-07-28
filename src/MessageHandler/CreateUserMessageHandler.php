@@ -28,7 +28,6 @@ final class CreateUserMessageHandler implements MessageHandlerInterface
     {
         $requestContent = $message->getRequest()->getContent();
         $json = json_decode($requestContent, true);
-        $json['telephones'] = [['number'=>'11111111'],['number'=>'111111111']];
 
         $user = new User($json['name'], $json['email']);
         foreach ($json['telephones'] as $telephone) {

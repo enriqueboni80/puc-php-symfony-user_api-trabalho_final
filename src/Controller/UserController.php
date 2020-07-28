@@ -84,7 +84,7 @@ class UserController extends AbstractController
         try {
             $handlerResult = $this->bus->dispatch(new UpdateUserMessage($request, $id));
             $user = $handlerResult->last(HandledStamp::class)->getResult();
-            return new Response('', Response::HTTP_OK);
+            return new JsonResponse($this->userToArray($user), Response::HTTP_OK);
         } catch (\Throwable $th) {
             return new JsonResponse($th, Response::HTTP_BAD_REQUEST);
         }
